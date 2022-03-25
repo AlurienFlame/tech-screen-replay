@@ -1,6 +1,8 @@
 const puppeteer = require('puppeteer');
 const express = require('express');
-var flatfile = require('flat-file-db');
+const flatfile = require('flat-file-db');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 var db = flatfile.sync('instructions.db');
 const app = express();
 const port = 3000;
@@ -151,11 +153,18 @@ async function waitForFunction(fn, timeout) {
     throw new Error('Timed out');
 }
 
-app.get('/save', async (req, res) => {
-    // TODO: Provide an interface for submitting puppeteer json gotten from canary devtools,
-    // after which it will be added to a database and the user will get a link.
+app.use(express.urlencoded());
+app.use(express.json());
 
-    res.send("TODO: Deliver macro link");
+app.post('/save', (req, res) => {
+    console.log("Submitting instructions to database: ", req.body);
+    const id = uuidv4();
+    db.put(id, req.body);
+    res.status(200).send({ id: id });
+});
+
+app.get('/save', async (req, res) => {
+    res.sendFile(path.join(__dirname, '/save.html'));
 });
 
 // /replay?id=905fdcd6-9bea-416f-b113-06f99d0b031c
@@ -163,16 +172,16 @@ app.get('/replay', async (req, res) => {
     // Set up puppeteer
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-    const timeout = 5000;
+    const timeout = 10000;
     page.setDefaultTimeout(timeout);
 
     // Fetch instructions from database based on query
     const instructions = db.get(req.query.id);
 
     // Parse and run instructions server-side using puppeteer
-    await parseInstructions(page, timeout, instructions.steps)
+    await parseInstructions(page, timeout, instructions.steps);
 
-    // Server-side-render the page puppeteer was working on and deliver it
+    // Server-side-render the page and deliver it
     const html = await ssr(page);
     res.send(html);
     await browser.close();
@@ -191,7 +200,7 @@ async function parseInstructions(page, timeout, instructions) {
                 );
                 break;
             case "click":
-                const element = await waitForSelectors([["aria/More information..."], ["body > div > p:nth-child(3) > a"]], page, { timeout, visible: true });
+                const element = await waitForSelectors(step.selectors, page, { timeout, visible: true });
                 await scrollIntoViewIfNeeded(element, timeout);
                 await Promise.all(
                     [element.click({ offset: { x: 75.39999389648438, y: 15.524993896484375 } }),

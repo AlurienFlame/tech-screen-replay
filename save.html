@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save</title>
+</head>
+
+<body>
+    <label for="instructions">Paste json data exported from Canary DevTools' recorder into this text box:</label>
+    <input id="instructions" type="text">
+    <input type="button" onclick="submit()" value="Submit to database">
+    <p id="link"></p>
+    <script>
+        function submit() {
+            let link = document.querySelector("#link");
+            let instructions = document.querySelector("#instructions").value;
+            if (instructions === "") return;
+            fetch("../save", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: instructions
+            }).then(response =>
+                response.json()
+            ).then(data =>
+                link.textContent = `Submitted! Here is your link: localhost:3000/replay?id=${data.id}`
+                // TODO: copy to clipboard button
+            ).catch(err =>
+                console.log(err)
+            );
+        }
+    </script>
+</body>
+
+</html>
