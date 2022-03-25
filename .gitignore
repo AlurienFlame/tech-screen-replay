@@ -1,3 +1,5 @@
+instructions.db
+
 # Logs
 logs
 *.log

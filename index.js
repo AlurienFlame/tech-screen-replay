@@ -1,7 +1,11 @@
 const puppeteer = require('puppeteer');
 const express = require('express');
+var flatfile = require('flat-file-db');
+var db = flatfile.sync('instructions.db');
 const app = express();
 const port = 3000;
+
+
 
 // Helper functions copied in from the chrome devtools recording auto-generated puppeteer code
 async function waitForSelectors(selectors, frame, options) {
@@ -147,54 +151,6 @@ async function waitForFunction(fn, timeout) {
     throw new Error('Timed out');
 }
 
-// TODO: read in from request
-const instructions = {
-    "title": "ex",
-    "steps": [
-        {
-            "type": "setViewport",
-            "width": 1536,
-            "height": 454,
-            "deviceScaleFactor": 1,
-            "isMobile": false,
-            "hasTouch": false,
-            "isLandscape": false
-        },
-        {
-            "type": "navigate",
-            "url": "https://example.com/",
-            "assertedEvents": [
-                {
-                    "type": "navigation",
-                    "url": "https://example.com/",
-                    "title": "Example Domain"
-                }
-            ]
-        },
-        {
-            "type": "click",
-            "selectors": [
-                [
-                    "aria/More information..."
-                ],
-                [
-                    "body > div > p:nth-child(3) > a"
-                ]
-            ],
-            "target": "main",
-            "offsetX": 65,
-            "offsetY": 8.524993896484375,
-            "assertedEvents": [
-                {
-                    "type": "navigation",
-                    "url": "https://www.iana.org/domains/reserved",
-                    "title": ""
-                }
-            ]
-        }
-    ]
-};
-
 app.get('/save', async (req, res) => {
     // TODO: Provide an interface for submitting puppeteer json gotten from canary devtools,
     // after which it will be added to a database and the user will get a link.
@@ -202,15 +158,28 @@ app.get('/save', async (req, res) => {
     res.send("TODO: Deliver macro link");
 });
 
+// /replay?id=905fdcd6-9bea-416f-b113-06f99d0b031c
 app.get('/replay', async (req, res) => {
+    // Set up puppeteer
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     const timeout = 5000;
     page.setDefaultTimeout(timeout);
 
-    // Parse instructions into puppeteer code
-    // TODO: Read in id from request and use it to fetch instructions from database
-    for (step of instructions.steps) {
+    // Fetch instructions from database based on query
+    const instructions = db.get(req.query.id);
+
+    // Parse and run instructions server-side using puppeteer
+    await parseInstructions(page, timeout, instructions.steps)
+
+    // Server-side-render the page puppeteer was working on and deliver it
+    const html = await ssr(page);
+    res.send(html);
+    await browser.close();
+});
+
+async function parseInstructions(page, timeout, instructions) {
+    for (step of instructions) {
         switch (step.type) {
             case "setViewport":
                 await page.setViewport({ "width": step.width, "height": step.height });
@@ -234,12 +203,7 @@ app.get('/replay', async (req, res) => {
                 break;
         }
     }
-
-
-    const html = await ssr(page);
-    res.send(html);
-    await browser.close();
-});
+}
 
 async function ssr(page) {
     // TODO: ssr more than just CSS. Maybe this can wait till the proof of concept is done.
