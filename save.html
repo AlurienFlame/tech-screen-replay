@@ -10,11 +10,16 @@
 <body>
     <label for="instructions">Paste json data exported from Canary DevTools' recorder into this text box:</label>
     <input id="instructions" type="text">
-    <input type="button" onclick="submit()" value="Submit to database">
-    <p id="link"></p>
+    <button onclick="submit()">Submit to Database</button>
+    <div id="hidden">
+        <p>Submitted! Here is your link: </p>
+        <p id="link"></p>
+        <button id="copy" onclick="copy()">Copy Link</button>
+    </div>
     <script>
+        let link = document.querySelector("#link");
+
         function submit() {
-            let link = document.querySelector("#link");
             let instructions = document.querySelector("#instructions").value;
             if (instructions === "") return;
             fetch("../save", {
@@ -24,11 +29,21 @@
             }).then(response =>
                 response.json()
             ).then(data =>
-                link.textContent = `Submitted! Here is your link: localhost:3000/replay?id=${data.id}`
+                link.textContent = `localhost:3000/replay?id=${data.id}`
                 // TODO: copy to clipboard button
             ).catch(err =>
                 console.log(err)
             );
+        }
+
+        function copy() {
+            let range = document.createRange();
+            range.selectNode(link);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand("copy");
+            window.getSelection().removeAllRanges();
+            alert(`Copied "${link.textContent}" to clipboard.`);
         }
     </script>
 </body>
