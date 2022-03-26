@@ -7,7 +7,121 @@ require('dotenv').config();
 var db = flatfile.sync('instructions.db');
 const app = express();
 
-// Helper functions copied in from the chrome devtools recording auto-generated puppeteer code
+app.use(express.urlencoded());
+app.use(express.json());
+
+app.post('/save', (req, res) => {
+    console.log("Submitting instructions to database: ", req.body);
+    const id = uuidv4();
+    // TODO: forbid submitting duplicates
+    db.put(id, req.body);
+    res.status(200).send({ id: id });
+});
+
+app.get('/', async (req, res) => {
+    res.send("Nothing here. Try /save or /replay endpoints.");
+});
+
+app.get('/save', async (req, res) => {
+    res.sendFile(path.join(__dirname, '/save.html'));
+});
+
+// /replay?id=905fdcd6-9bea-416f-b113-06f99d0b031c
+app.get('/replay', async (req, res) => {
+    // Fetch instructions from database based on query
+    const instructions = db.get(req.query.id);
+    if (!instructions) {
+        res.send("Failed to fetch instructions. Are you sure you have a valid id?");
+    }
+    console.log("Got instructions from database")
+
+    // Set up puppeteer
+    const browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_TOKEN}` });
+    const page = await browser.newPage();
+    const timeout = 10000;
+    page.setDefaultTimeout(timeout);
+    console.log("Set up puppeteer")
+
+    // Parse and run instructions server-side using puppeteer
+    await parseInstructions(page, timeout, instructions.steps);
+    console.log("Parsed instructions")
+
+    // Server-side-render the page and deliver it
+    const html = await ssr(page);
+    res.send(html);
+    await browser.close();
+    console.log("Delivered page")
+});
+
+async function parseInstructions(page, timeout, instructions) {
+    for (step of instructions) {
+        switch (step.type) {
+            case "setViewport":
+                await page.setViewport({ "width": step.width, "height": step.height });
+                break;
+            case "navigate":
+                await Promise.all(
+                    [page.goto(step.url),
+                    page.waitForNavigation()]
+                );
+                break;
+            case "click":
+                const element = await waitForSelectors(step.selectors, page, { timeout, visible: true });
+                await scrollIntoViewIfNeeded(element, timeout);
+                await Promise.all(
+                    [element.click({ offset: { x: 75.39999389648438, y: 15.524993896484375 } }),
+                    page.waitForNavigation()]
+                );
+                break;
+            default:
+                console.log(`Unsupported step type: ${step.type}`);
+                break;
+        }
+    }
+}
+
+async function ssr(page) {
+    // TODO: ssr more than just CSS. Maybe this can wait till the proof of concept is done.
+    // This function is based on the guide at https://developers.google.com/web/tools/puppeteer/articles/ssr
+
+    const stylesheetContents = {};
+
+    // 1. Stash the responses of local stylesheets.
+    page.on('response', async resp => {
+        const responseUrl = resp.url();
+        const sameOrigin = new URL(responseUrl).origin === new URL(page.url()).origin;
+        const isStylesheet = resp.request().resourceType() === 'stylesheet';
+        if (sameOrigin && isStylesheet) {
+            stylesheetContents[responseUrl] = await resp.text();
+        }
+    });
+
+    // 2. Load page as normal, waiting for network requests to be idle.
+    await page.goto(page.url(), { waitUntil: 'networkidle0' });
+
+    // 3. Inline the CSS.
+    // Replace stylesheets in the page with their equivalent <style>.
+    await page.$$eval('link[rel="stylesheet"]', (links, content) => {
+        links.forEach(link => {
+            const cssText = content[link.href];
+            if (cssText) {
+                const style = document.createElement('style');
+                style.textContent = cssText;
+                link.replaceWith(style);
+            }
+        });
+    }, stylesheetContents);
+
+    // 4. Get updated serialized HTML of page.
+    return await page.content();
+}
+
+app.listen(process.env.PORT, () => {
+    console.log(`App listening on port ${process.env.PORT}`);
+});
+
+// Everything below this is just helper functions copied in from
+// the auto-generated puppeteer code that chrome devtools recording generates 
 async function waitForSelectors(selectors, frame, options) {
     for (const selector of selectors) {
         try {
@@ -150,116 +264,3 @@ async function waitForFunction(fn, timeout) {
     }
     throw new Error('Timed out');
 }
-
-app.use(express.urlencoded());
-app.use(express.json());
-
-app.post('/save', (req, res) => {
-    console.log("Submitting instructions to database: ", req.body);
-    const id = uuidv4();
-    // TODO: forbid submitting duplicates
-    db.put(id, req.body);
-    res.status(200).send({ id: id });
-});
-
-app.get('/', async (req, res) => {
-    res.send("Nothing here. Try /save or /replay endpoints.");
-});
-
-app.get('/save', async (req, res) => {
-    res.sendFile(path.join(__dirname, '/save.html'));
-});
-
-// /replay?id=905fdcd6-9bea-416f-b113-06f99d0b031c
-app.get('/replay', async (req, res) => {
-    // Fetch instructions from database based on query
-    const instructions = db.get(req.query.id);
-    if (!instructions) {
-        res.send("Failed to fetch instructions. Are you sure you have a valid id?");
-    }
-    console.log("Got instructions from database")
-
-    // Set up puppeteer
-    const browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_TOKEN}` });
-    const page = await browser.newPage();
-    const timeout = 10000;
-    page.setDefaultTimeout(timeout);
-    console.log("Set up puppeteer")
-
-    // Parse and run instructions server-side using puppeteer
-    await parseInstructions(page, timeout, instructions.steps);
-    console.log("Parsed instructions")
-
-    // Server-side-render the page and deliver it
-    const html = await ssr(page);
-    res.send(html);
-    await browser.close();
-    console.log("Delivered page")
-});
-
-async function parseInstructions(page, timeout, instructions) {
-    for (step of instructions) {
-        switch (step.type) {
-            case "setViewport":
-                await page.setViewport({ "width": step.width, "height": step.height });
-                break;
-            case "navigate":
-                await Promise.all(
-                    [page.goto(step.url),
-                    page.waitForNavigation()]
-                );
-                break;
-            case "click":
-                const element = await waitForSelectors(step.selectors, page, { timeout, visible: true });
-                await scrollIntoViewIfNeeded(element, timeout);
-                await Promise.all(
-                    [element.click({ offset: { x: 75.39999389648438, y: 15.524993896484375 } }),
-                    page.waitForNavigation()]
-                );
-                break;
-            default:
-                console.log(`Unsupported step type: ${step.type}`);
-                break;
-        }
-    }
-}
-
-async function ssr(page) {
-    // TODO: ssr more than just CSS. Maybe this can wait till the proof of concept is done.
-    // This function is based on the guide at https://developers.google.com/web/tools/puppeteer/articles/ssr
-
-    const stylesheetContents = {};
-
-    // 1. Stash the responses of local stylesheets.
-    page.on('response', async resp => {
-        const responseUrl = resp.url();
-        const sameOrigin = new URL(responseUrl).origin === new URL(page.url()).origin;
-        const isStylesheet = resp.request().resourceType() === 'stylesheet';
-        if (sameOrigin && isStylesheet) {
-            stylesheetContents[responseUrl] = await resp.text();
-        }
-    });
-
-    // 2. Load page as normal, waiting for network requests to be idle.
-    await page.goto(page.url(), { waitUntil: 'networkidle0' });
-
-    // 3. Inline the CSS.
-    // Replace stylesheets in the page with their equivalent <style>.
-    await page.$$eval('link[rel="stylesheet"]', (links, content) => {
-        links.forEach(link => {
-            const cssText = content[link.href];
-            if (cssText) {
-                const style = document.createElement('style');
-                style.textContent = cssText;
-                link.replaceWith(style);
-            }
-        });
-    }, stylesheetContents);
-
-    // 4. Get updated serialized HTML of page.
-    return await page.content();
-}
-
-app.listen(process.env.PORT, () => {
-    console.log(`App listening on port ${process.env.PORT}`);
-});
