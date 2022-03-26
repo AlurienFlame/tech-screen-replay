@@ -11,13 +11,14 @@
     <label for="instructions">Paste json data exported from Canary DevTools' recorder into this text box:</label>
     <input id="instructions" type="text">
     <button onclick="submit()">Submit to Database</button>
-    <div id="hidden">
+    <div id="hidden" style="display:none;">
         <p>Submitted! Here is your link: </p>
         <p id="link"></p>
         <button id="copy" onclick="copy()">Copy Link</button>
     </div>
     <script>
         let link = document.querySelector("#link");
+        let hidden = document.querySelector("#hidden");
 
         function submit() {
             let instructions = document.querySelector("#instructions").value;
@@ -28,10 +29,10 @@
                 body: instructions
             }).then(response =>
                 response.json()
-            ).then(data =>
-                link.textContent = `localhost:3000/replay?id=${data.id}`
-                // TODO: copy to clipboard button
-            ).catch(err =>
+            ).then(data => {
+                link.textContent = `localhost:3000/replay?id=${data.id}`;
+                hidden.style.display = "block";
+            }).catch(err =>
                 console.log(err)
             );
         }

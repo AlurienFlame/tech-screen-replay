@@ -159,6 +159,7 @@ app.use(express.json());
 app.post('/save', (req, res) => {
     console.log("Submitting instructions to database: ", req.body);
     const id = uuidv4();
+    // TODO: forbid submitting duplicates
     db.put(id, req.body);
     res.status(200).send({ id: id });
 });
@@ -169,14 +170,17 @@ app.get('/save', async (req, res) => {
 
 // /replay?id=905fdcd6-9bea-416f-b113-06f99d0b031c
 app.get('/replay', async (req, res) => {
+    // Fetch instructions from database based on query
+    const instructions = db.get(req.query.id);
+    if (!instructions) {
+        res.send("Failed to fetch instructions. Are you sure you have a valid id?");
+    }
+
     // Set up puppeteer
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     const timeout = 10000;
     page.setDefaultTimeout(timeout);
-
-    // Fetch instructions from database based on query
-    const instructions = db.get(req.query.id);
 
     // Parse and run instructions server-side using puppeteer
     await parseInstructions(page, timeout, instructions.steps);
