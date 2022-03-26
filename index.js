@@ -3,6 +3,7 @@ const express = require('express');
 const flatfile = require('flat-file-db');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+require('dotenv').config();
 var db = flatfile.sync('instructions.db');
 const app = express();
 const port = 3000;
@@ -177,7 +178,7 @@ app.get('/replay', async (req, res) => {
     }
 
     // Set up puppeteer
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_TOKEN}` });
     const page = await browser.newPage();
     const timeout = 10000;
     page.setDefaultTimeout(timeout);
