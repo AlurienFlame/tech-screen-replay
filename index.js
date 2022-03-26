@@ -6,9 +6,6 @@ const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 var db = flatfile.sync('instructions.db');
 const app = express();
-const port = 3000;
-
-
 
 // Helper functions copied in from the chrome devtools recording auto-generated puppeteer code
 async function waitForSelectors(selectors, frame, options) {
@@ -165,6 +162,10 @@ app.post('/save', (req, res) => {
     res.status(200).send({ id: id });
 });
 
+app.get('/', async (req, res) => {
+    res.send("Nothing here. Try /save or /replay endpoints.");
+});
+
 app.get('/save', async (req, res) => {
     res.sendFile(path.join(__dirname, '/save.html'));
 });
@@ -176,20 +177,24 @@ app.get('/replay', async (req, res) => {
     if (!instructions) {
         res.send("Failed to fetch instructions. Are you sure you have a valid id?");
     }
+    console.log("Got instructions from database")
 
     // Set up puppeteer
     const browser = await puppeteer.connect({ browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_API_TOKEN}` });
     const page = await browser.newPage();
     const timeout = 10000;
     page.setDefaultTimeout(timeout);
+    console.log("Set up puppeteer")
 
     // Parse and run instructions server-side using puppeteer
     await parseInstructions(page, timeout, instructions.steps);
+    console.log("Parsed instructions")
 
     // Server-side-render the page and deliver it
     const html = await ssr(page);
     res.send(html);
     await browser.close();
+    console.log("Delivered page")
 });
 
 async function parseInstructions(page, timeout, instructions) {
@@ -255,6 +260,6 @@ async function ssr(page) {
     return await page.content();
 }
 
-app.listen(port, () => {
-    console.log(`App listening on port ${port}`);
+app.listen(process.env.PORT, () => {
+    console.log(`App listening on port ${process.env.PORT}`);
 });

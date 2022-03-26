@@ -30,7 +30,7 @@
             }).then(response =>
                 response.json()
             ).then(data => {
-                link.textContent = `localhost:3000/replay?id=${data.id}`;
+                link.textContent = `${window.location.host}/replay?id=${data.id}`;
                 hidden.style.display = "block";
             }).catch(err =>
                 console.log(err)
